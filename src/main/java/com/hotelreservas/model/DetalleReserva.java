@@ -5,6 +5,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
+// Evita que se repita la reserva una y otra vez
+import com.fasterxml.jackson.annotation.JsonBackReference;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -18,6 +21,10 @@ public class DetalleReserva {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reserva_id", nullable = false)
+
+    // Este lado NO se muestra en el JSON para evitar el bucle
+    @JsonBackReference
+    
     private Reserva reserva;
 
     @ManyToOne(fetch = FetchType.EAGER)
