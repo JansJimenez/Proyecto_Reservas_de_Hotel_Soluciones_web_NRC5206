@@ -5,6 +5,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
+// Permite mostrar los detalles sin que se repitatodo_infinitamente
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import java.time.LocalDate;
 import java.util.List;
 
@@ -39,5 +42,7 @@ public class Reserva {
     private String observaciones;
 
     @OneToMany(mappedBy = "reserva", cascade = CascadeType.ALL, orphanRemoval = true)
+    // Este lado SÍ se muestra en el JSON
+    @JsonManagedReference
     private List<DetalleReserva> detalles;
 }
