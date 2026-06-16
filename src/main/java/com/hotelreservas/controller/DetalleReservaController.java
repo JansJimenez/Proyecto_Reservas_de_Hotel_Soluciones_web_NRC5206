@@ -1,47 +1,51 @@
 package com.hotelreservas.controller;
 
+import com.hotelreservas.dto.DetalleReservaResponseDTO;
+import com.hotelreservas.exception.ResourceNotFoundException;
+import com.hotelreservas.mapper.ReservaMapper;
 import com.hotelreservas.model.DetalleReserva;
 import com.hotelreservas.service.IDetalleReservaService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/detalles-reserva")
 @CrossOrigin(origins = "*")
+@RequiredArgsConstructor
 public class DetalleReservaController {
 
-    @Autowired
-    private IDetalleReservaService detalleReservaService;
+    private final IDetalleReservaService detalleReservaService;
 
     @GetMapping
-    public ResponseEntity<List<DetalleReserva>> listarTodos() {
-        return ResponseEntity.ok(detalleReservaService.listarTodos());
+    public ResponseEntity<List<DetalleReservaResponseDTO>> listarTodos() {
+        List<DetalleReservaResponseDTO> detalles = detalleReservaService.listarTodos().stream()
+                .map(ReservaMapper::detalleToResponseDTO)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(detalles);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> buscarPorId(@PathVariable Long id) {
-        return detalleReservaService.buscarPorId(id)
-                .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body("Detalle de reserva no encontrado con id: " + id));
+    public ResponseEntity<DetalleReservaResponseDTO> buscarPorId(@PathVariable Long id) {
+        DetalleReserva detalle = detalleReservaService.buscarPorId(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Detalle de reserva no encontrado con id: " + id));
+        return ResponseEntity.ok(ReservaMapper.detalleToResponseDTO(detalle));
     }
 
     @GetMapping("/reserva/{reservaId}")
-    public ResponseEntity<List<DetalleReserva>> listarPorReserva(@PathVariable Long reservaId) {
-        return ResponseEntity.ok(detalleReservaService.listarPorReserva(reservaId));
+    public ResponseEntity<List<DetalleReservaResponseDTO>> listarPorReserva(@PathVariable Long reservaId) {
+        List<DetalleReservaResponseDTO> detalles = detalleReservaService.listarPorReserva(reservaId).stream()
+                .map(ReservaMapper::detalleToResponseDTO)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(detalles);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> eliminar(@PathVariable Long id) {
-        try {
-            detalleReservaService.eliminar(id);
-            return ResponseEntity.ok("Detalle de reserva eliminado correctamente");
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<Void> eliminar(@PathVariable Long id) {
+        detalleReservaService.eliminar(id);
+        return ResponseEntity.noContent().build();
     }
 }

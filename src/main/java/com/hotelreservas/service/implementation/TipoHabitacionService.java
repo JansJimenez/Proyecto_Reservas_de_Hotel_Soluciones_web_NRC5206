@@ -1,52 +1,36 @@
 package com.hotelreservas.service.implementation;
 
+import com.hotelreservas.exception.DuplicateResourceException;
+import com.hotelreservas.exception.ResourceNotFoundException;
 import com.hotelreservas.model.TipoHabitacion;
 import com.hotelreservas.repository.ITipoHabitacionRepository;
 import com.hotelreservas.service.ITipoHabitacionService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Optional;
-
 @Service
-public class TipoHabitacionService implements ITipoHabitacionService {
+public class TipoHabitacionService extends GenericServiceImpl<TipoHabitacion, Long> implements ITipoHabitacionService {
 
-    @Autowired
-    private ITipoHabitacionRepository tipoHabitacionRepository;
+    private final ITipoHabitacionRepository tipoHabitacionRepository;
 
-    @Override
-    public List<TipoHabitacion> listarTodos() {
-        return tipoHabitacionRepository.findAll();
-    }
-
-    @Override
-    public Optional<TipoHabitacion> buscarPorId(Long id) {
-        return tipoHabitacionRepository.findById(id);
+    public TipoHabitacionService(ITipoHabitacionRepository tipoHabitacionRepository) {
+        super(tipoHabitacionRepository, "Tipo de habitación");
+        this.tipoHabitacionRepository = tipoHabitacionRepository;
     }
 
     @Override
     public TipoHabitacion guardar(TipoHabitacion tipoHabitacion) {
         if (tipoHabitacionRepository.existsByNombre(tipoHabitacion.getNombre())) {
-            throw new RuntimeException("Ya existe un tipo de habitación con el nombre: " + tipoHabitacion.getNombre());
+            throw new DuplicateResourceException("Ya existe un tipo de habitación con el nombre: " + tipoHabitacion.getNombre());
         }
-        return tipoHabitacionRepository.save(tipoHabitacion);
+        return super.guardar(tipoHabitacion);
     }
 
     @Override
     public TipoHabitacion actualizar(Long id, TipoHabitacion tipoActualizado) {
         TipoHabitacion existente = tipoHabitacionRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Tipo de habitación no encontrado con id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Tipo de habitación no encontrado con id: " + id));
         existente.setNombre(tipoActualizado.getNombre());
         existente.setDescripcion(tipoActualizado.getDescripcion());
         return tipoHabitacionRepository.save(existente);
-    }
-
-    @Override
-    public void eliminar(Long id) {
-        if (!tipoHabitacionRepository.existsById(id)) {
-            throw new RuntimeException("Tipo de habitación no encontrado con id: " + id);
-        }
-        tipoHabitacionRepository.deleteById(id);
     }
 }

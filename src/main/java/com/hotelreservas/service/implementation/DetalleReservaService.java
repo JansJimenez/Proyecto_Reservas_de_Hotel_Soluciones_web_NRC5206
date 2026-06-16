@@ -3,21 +3,18 @@ package com.hotelreservas.service.implementation;
 import com.hotelreservas.model.DetalleReserva;
 import com.hotelreservas.repository.IDetalleReservaRepository;
 import com.hotelreservas.service.IDetalleReservaService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
-public class DetalleReservaService implements IDetalleReservaService {
+public class DetalleReservaService extends GenericServiceImpl<DetalleReserva, Long> implements IDetalleReservaService {
 
-    @Autowired
-    private IDetalleReservaRepository detalleReservaRepository;
+    private final IDetalleReservaRepository detalleReservaRepository;
 
-    @Override
-    public List<DetalleReserva> listarTodos() {
-        return detalleReservaRepository.findAll();
+    public DetalleReservaService(IDetalleReservaRepository detalleReservaRepository) {
+        super(detalleReservaRepository, "Detalle de reserva");
+        this.detalleReservaRepository = detalleReservaRepository;
     }
 
     @Override
@@ -25,16 +22,7 @@ public class DetalleReservaService implements IDetalleReservaService {
         return detalleReservaRepository.findByReservaId(reservaId);
     }
 
-    @Override
-    public Optional<DetalleReserva> buscarPorId(Long id) {
-        return detalleReservaRepository.findById(id);
-    }
-
-    @Override
-    public void eliminar(Long id) {
-        if (!detalleReservaRepository.existsById(id)) {
-            throw new RuntimeException("Detalle de reserva no encontrado con id: " + id);
-        }
-        detalleReservaRepository.deleteById(id);
-    }
+    // guardar(), actualizar() y eliminar() heredan el comportamiento genérico de
+    // GenericServiceImpl. La creación/actualización real de detalles se gestiona
+    // a través de ReservaService, ya que un detalle siempre pertenece a una reserva.
 }

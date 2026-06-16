@@ -1,70 +1,178 @@
 package com.hotelreservas.controller;
 
+import com.hotelreservas.dto.ReservaRequestDTO;
+import com.hotelreservas.dto.ReservaResponseDTO;
+import com.hotelreservas.exception.BadRequestException;
+import com.hotelreservas.exception.ResourceNotFoundException;
+import com.hotelreservas.mapper.ReservaMapper;
 import com.hotelreservas.model.Reserva;
+import com.hotelreservas.model.Usuario;
 import com.hotelreservas.service.IReservaService;
-import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.hateoas.CollectionModel;
+import org.springframework.hateoas.EntityModel;
+import org.springframework.hateoas.Link;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
+
+/**
+ * Controller de Reservas — Richardson Nivel 3 (HATEOAS).
+ * Cada recurso devuelto incluye enlaces (self, colección, recursos relacionados)
+ * que permiten navegar la API sin conocer las URIs de antemano.
+ *
+ * Reglas de autorización:
+ *  - ADMIN: acceso total a todas las reservas.
+ *  - HUESPED: solo puede ver y crear sus propias reservas
+ *    (se valida que el huespedId del DTO corresponda al usuario autenticado).
+ */
 @RestController
 @RequestMapping("/api/reservas")
 @CrossOrigin(origins = "*")
+@RequiredArgsConstructor
 public class ReservaController {
 
-    @Autowired
-    private IReservaService reservaService;
+    private final IReservaService reservaService;
 
     @GetMapping
-    public ResponseEntity<List<Reserva>> listarTodas() {
-        return ResponseEntity.ok(reservaService.listarTodas());
+    public ResponseEntity<CollectionModel<EntityModel<ReservaResponseDTO>>> listarTodas() {
+        Usuario usuario = usuarioActual();
+
+        List<Reserva> reservas = esAdmin(usuario)
+                ? reservaService.listarTodos()
+                : reservaService.listarPorHuesped(usuario.getHuesped().getId());
+
+        List<EntityModel<ReservaResponseDTO>> modelos = reservas.stream()
+                .map(this::toModel)
+                .collect(Collectors.toList());
+
+        Link selfLink = linkTo(methodOn(ReservaController.class).listarTodas()).withSelfRel();
+        return ResponseEntity.ok(CollectionModel.of(modelos, selfLink));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> buscarPorId(@PathVariable Long id) {
-        return reservaService.buscarPorId(id)
-                .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body("Reserva no encontrada con id: " + id));
+    public ResponseEntity<EntityModel<ReservaResponseDTO>> buscarPorId(@PathVariable Long id) {
+        Reserva reserva = reservaService.buscarPorId(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reserva no encontrada con id: " + id));
+
+        verificarAccesoOLanzar(reserva);
+
+        return ResponseEntity.ok(toModel(reserva));
     }
 
     @GetMapping("/huesped/{huespedId}")
-    public ResponseEntity<List<Reserva>> listarPorHuesped(@PathVariable Long huespedId) {
-        return ResponseEntity.ok(reservaService.listarPorHuesped(huespedId));
+    public ResponseEntity<CollectionModel<EntityModel<ReservaResponseDTO>>> listarPorHuesped(
+            @PathVariable Long huespedId) {
+
+        Usuario usuario = usuarioActual();
+        if (!esAdmin(usuario) && !huespedId.equals(usuario.getHuesped().getId())) {
+            throw new BadRequestException("No puede consultar reservas de otro huésped");
+        }
+
+        List<EntityModel<ReservaResponseDTO>> modelos = reservaService.listarPorHuesped(huespedId).stream()
+                .map(this::toModel)
+                .collect(Collectors.toList());
+
+        Link selfLink = linkTo(methodOn(ReservaController.class).listarPorHuesped(huespedId)).withSelfRel();
+        return ResponseEntity.ok(CollectionModel.of(modelos, selfLink));
     }
 
     @GetMapping("/estado/{estado}")
-    public ResponseEntity<List<Reserva>> listarPorEstado(@PathVariable String estado) {
-        return ResponseEntity.ok(reservaService.listarPorEstado(estado.toUpperCase()));
+    public ResponseEntity<CollectionModel<EntityModel<ReservaResponseDTO>>> listarPorEstado(
+            @PathVariable String estado) {
+
+        List<EntityModel<ReservaResponseDTO>> modelos = reservaService.listarPorEstado(estado.toUpperCase()).stream()
+                .map(this::toModel)
+                .collect(Collectors.toList());
+
+        Link selfLink = linkTo(methodOn(ReservaController.class).listarPorEstado(estado)).withSelfRel();
+        return ResponseEntity.ok(CollectionModel.of(modelos, selfLink));
     }
 
     @PostMapping
-    public ResponseEntity<?> crear(@RequestBody Reserva reserva) {
-        try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(reservaService.guardar(reserva));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+    public ResponseEntity<EntityModel<ReservaResponseDTO>> crear(@Valid @RequestBody ReservaRequestDTO dto) {
+        Usuario usuario = usuarioActual();
+
+        if (!esAdmin(usuario)) {
+            // Un HUESPED solo puede crear reservas para sí mismo
+            if (usuario.getHuesped() == null || !usuario.getHuesped().getId().equals(dto.getHuespedId())) {
+                throw new BadRequestException("Solo puede crear reservas para su propio usuario");
+            }
         }
+
+        Reserva creada = reservaService.guardar(ReservaMapper.toEntity(dto));
+        return ResponseEntity.status(HttpStatus.CREATED).body(toModel(creada));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> actualizar(@PathVariable Long id, @RequestBody Reserva reserva) {
-        try {
-            return ResponseEntity.ok(reservaService.actualizar(id, reserva));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+    public ResponseEntity<EntityModel<ReservaResponseDTO>> actualizar(@PathVariable Long id,
+                                                                        @Valid @RequestBody ReservaRequestDTO dto) {
+        Reserva existente = reservaService.buscarPorId(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reserva no encontrada con id: " + id));
+        verificarAccesoOLanzar(existente);
+
+        Reserva actualizada = reservaService.actualizar(id, ReservaMapper.toEntity(dto));
+        return ResponseEntity.ok(toModel(actualizada));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> eliminar(@PathVariable Long id) {
-        try {
-            reservaService.eliminar(id);
-            return ResponseEntity.ok("Reserva eliminada correctamente");
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+    public ResponseEntity<Void> eliminar(@PathVariable Long id) {
+        Reserva existente = reservaService.buscarPorId(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reserva no encontrada con id: " + id));
+        verificarAccesoOLanzar(existente);
+
+        reservaService.eliminar(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ---------------------------------------------------------------
+    // Helpers HATEOAS y de autorización
+    // ---------------------------------------------------------------
+
+    private EntityModel<ReservaResponseDTO> toModel(Reserva reserva) {
+        ReservaResponseDTO dto = ReservaMapper.toResponseDTO(reserva);
+
+        EntityModel<ReservaResponseDTO> model = EntityModel.of(dto,
+                linkTo(methodOn(ReservaController.class).buscarPorId(reserva.getId())).withSelfRel(),
+                linkTo(methodOn(ReservaController.class).listarTodas()).withRel("reservas"),
+                linkTo(methodOn(DetalleReservaController.class).listarPorReserva(reserva.getId())).withRel("detalles")
+        );
+
+        if (reserva.getHuesped() != null) {
+            model.add(linkTo(methodOn(HuespedController.class)
+                    .buscarPorId(reserva.getHuesped().getId())).withRel("huesped"));
+        }
+
+        return model;
+    }
+
+    private Usuario usuarioActual() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return (Usuario) auth.getPrincipal();
+    }
+
+    private boolean esAdmin(Usuario usuario) {
+        return usuario.getRol().name().equals("ADMIN");
+    }
+
+    private void verificarAccesoOLanzar(Reserva reserva) {
+        Usuario usuario = usuarioActual();
+        if (esAdmin(usuario)) {
+            return;
+        }
+        if (usuario.getHuesped() == null
+                || reserva.getHuesped() == null
+                || !reserva.getHuesped().getId().equals(usuario.getHuesped().getId())) {
+            throw new BadRequestException("No tiene acceso a esta reserva");
         }
     }
 }

@@ -8,10 +8,11 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class TipoHabitacionRequestDTO {
+public class LoginRequestDTO {
 
-    @NotBlank(message = "El nombre del tipo de habitación es obligatorio")
-    private String nombre;
+    @NotBlank(message = "El nombre de usuario es obligatorio")
+    private String username;
 
-    private String descripcion;
+    @NotBlank(message = "La contraseña es obligatoria")
+    private String password;
 }
